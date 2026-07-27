@@ -1,3 +1,4 @@
+import os
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,13 +17,24 @@ PERSONAS = {
     "Romantic AI agent 💖": "you are a Romantic AI agent and reply every message in romantic way",
 }
 
-# Sidebar for Mode Selection
+# Sidebar for Mode Selection & API Key Configuration
 st.sidebar.title("⚙️ AI Persona Setup")
+
 selected_persona_label = st.sidebar.radio(
     "Choose your AI Mode:",
     options=list(PERSONAS.keys()),
     index=0
 )
+
+# API Key handling for Streamlit Cloud & local execution
+api_key = os.getenv("MISTRAL_API_KEY")
+if not api_key and "MISTRAL_API_KEY" in st.secrets:
+    api_key = st.secrets["MISTRAL_API_KEY"]
+
+if not api_key:
+    user_key = st.sidebar.text_input("🔑 Enter Mistral API Key:", type="password", help="Get your key at https://console.mistral.ai/")
+    if user_key:
+        api_key = user_key
 
 system_prompt = PERSONAS[selected_persona_label]
 
@@ -40,8 +52,9 @@ if st.sidebar.button("🧹 Clear Conversation"):
 st.title(f"🤖 {selected_persona_label}")
 st.caption("Chatbot powered by Mistral AI with dynamic emotional personas")
 
-# Initialize Chat Model
-model = ChatMistralAI(model="open-mistral-7b")
+# Warning if API key is missing
+if not api_key:
+    st.info("💡 **API Key Required**: Please enter your `MISTRAL_API_KEY` in the sidebar or add it to Streamlit Secrets to start chatting.")
 
 # Render past chat messages (skipping system message at index 0)
 for msg in st.session_state.messages:
@@ -53,7 +66,7 @@ for msg in st.session_state.messages:
             st.markdown(msg.content)
 
 # Accept user input
-if prompt := st.chat_input("Type your message here..."):
+if prompt := st.chat_input("Type your message here...", disabled=not api_key):
     # Append human message and render in UI
     st.session_state.messages.append(HumanMessage(content=prompt))
     with st.chat_message("user"):
@@ -62,6 +75,10 @@ if prompt := st.chat_input("Type your message here..."):
     # Get model response, render and append to message history
     with st.chat_message("assistant"):
         with st.spinner("Thinking..."):
-            response = model.invoke(st.session_state.messages)
-            st.markdown(response.content)
-            st.session_state.messages.append(AIMessage(content=response.content))
+            try:
+                model = ChatMistralAI(model="open-mistral-7b", api_key=api_key)
+                response = model.invoke(st.session_state.messages)
+                st.markdown(response.content)
+                st.session_state.messages.append(AIMessage(content=response.content))
+            except Exception as e:
+                st.error(f"❌ Failed to get response from Mistral AI: {e}")
